@@ -1,0 +1,134 @@
+#include <U8g2lib.h>
+
+// Defina o controlador do display (no caso, SSD1306)
+U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);
+
+// Defina os pinos para os botões da calculadora
+const int buttonPin[4] = {2, 3, 4, 5};
+const int buttonColumn[4] = {6, 7, 8, 9};
+char keypad[4][4] = {
+  {'1', '2', '3', '+'},
+  {'4', '5', '6', '-'},
+  {'7', '8', '9', '*'},
+  {'C', '0', '=', '/'}
+};
+
+char inputBuffer[16];
+int bufferIndex = 0;
+
+bool displayResult = false; // Indica se o resultado deve ser exibido
+float result = 0.0;
+
+void setup() {
+  // Inicializa o display
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_ncenB14_tr); // Use uma fonte maior
+
+  // Inicializa os pinos dos botões da calculadora
+  for (int i = 0; i < 4; i++) {
+    pinMode(buttonPin[i], INPUT_PULLUP);
+    pinMode(buttonColumn[i], OUTPUT);
+    digitalWrite(buttonColumn[i], HIGH);
+  }
+
+  memset(inputBuffer, 0, sizeof(inputBuffer));
+  bufferIndex = 0;
+}
+
+void loop() {
+  // Lê o teclado e atualiza o buffer de entrada
+  char key = getKey();
+  
+  if (key != '\0') {
+    if (key == '=') {
+      // Se a tecla '=' for pressionada, realiza o cálculo e exibe o resultado
+      result = evaluateExpression(inputBuffer);
+      displayResult = true;
+    } else if (key == 'C') {
+      // Se a tecla 'C' for pressionada, limpa o buffer de entrada
+      memset(inputBuffer, 0, sizeof(inputBuffer));
+      bufferIndex = 0;
+      displayResult = false;
+    } else {
+      // Caso contrário, adicione o caractere ao buffer de entrada
+      if (bufferIndex < sizeof(inputBuffer) - 1) {
+        inputBuffer[bufferIndex++] = key;
+      }
+      displayResult = false;
+    }
+  }
+
+  // Atualiza o display
+  u8g2.clearBuffer();
+
+  if (displayResult) {
+    // Exibe o resultado no display
+    u8g2.setCursor(10, 30); // Ajuste a posição do resultado conforme necessário
+    u8g2.print(result, 2); // Exibe o resultado com duas casas decimais
+  } else {
+    // Exibe a entrada atual no display
+    u8g2.setCursor(10, 30); // Ajuste a posição do texto conforme necessário
+    u8g2.print(inputBuffer);
+  }
+
+  u8g2.sendBuffer();
+}
+
+char getKey() {
+  for (int col = 0; col < 4; col++) {
+    digitalWrite(buttonColumn[col], LOW);
+    for (int row = 0; row < 4; row++) {
+      if (digitalRead(buttonPin[row]) == LOW) {
+        delay(50); // Debounce
+        while (digitalRead(buttonPin[row]) == LOW);
+        digitalWrite(buttonColumn[col], HIGH);
+        return keypad[row][col];
+      }
+    }
+    digitalWrite(buttonColumn[col], HIGH);
+  }
+  return '\0'; // Nenhuma tecla pressionada
+}
+
+float evaluateExpression(const char* expression) {
+  float value;
+  char operatorUsed;
+  char* endPtr; // Ponteiro para rastrear o final do número
+  
+  // Use a função strtod para avaliar a expressão
+  value = strtod(expression, &endPtr);
+
+  while (*endPtr) {
+    // Encontre o operador
+    operatorUsed = *endPtr;
+    endPtr++;
+
+    // Obtenha o próximo número
+    float nextValue = strtod(endPtr, &endPtr);
+
+    switch (operatorUsed) {
+      case '+':
+        value += nextValue;
+        break;
+      case '-':
+        value -= nextValue;
+        break;
+      case '*':
+        value *= nextValue;
+        break;
+      case '/':
+        if (nextValue != 0) {
+          value /= nextValue;
+        } else {
+          // Lidar com a divisão por zero
+          value = 0.0;
+        }
+        break;
+      default:
+        // Operador desconhecido
+        break;
+    }
+  }
+
+  return value;
+}
